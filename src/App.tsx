@@ -19,6 +19,9 @@ import { Dashboard } from './components/Dashboard';
 import { Button } from './components/ui/Button';
 import { processFiles } from './lib/dataProcessor';
 import { Anomaly } from './lib/utils';
+import { getSiteDetail, SiteInfoDetail } from './lib/siteData';
+import { findNearestWeatherStation } from './lib/weatherStations';
+import { parseWeatherResponse } from './lib/weatherParser';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
@@ -30,7 +33,9 @@ export default function App() {
   
   const [anomalies, setAnomalies] = React.useState<Anomaly[]>([]);
   const [totalRecords, setTotalRecords] = React.useState(0);
-  const [siteInfo, setSiteInfo] = React.useState<{ name: string; id: string } | null>(null);
+  const [siteInfo, setSiteInfo] = React.useState<SiteInfoDetail | null>(null);
+  const [nearestWeatherStation, setNearestWeatherStation] = React.useState<{ id: string; name: string; distance: number } | null>(null);
+  const [weatherChartData, setWeatherChartData] = React.useState<any[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [aiReport, setAiReport] = React.useState<string | null>(null);
 
@@ -40,6 +45,8 @@ export default function App() {
     setAnomalies([]);
     setTotalRecords(0);
     setSiteInfo(null);
+    setNearestWeatherStation(null);
+    setWeatherChartData([]);
     setError(null);
     setAiReport(null);
   };
@@ -67,12 +74,65 @@ export default function App() {
       return;
     }
 
-    setAnomalies(result.anomalies);
+    const sortedAnomalies = [...result.anomalies].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    setAnomalies(sortedAnomalies);
     setTotalRecords((result.hourlyData?.length || 0) + (result.fiveMinData?.length || 0));
-    setSiteInfo({ 
-      name: result.hourlyData?.[0].siteName || '', 
-      id: result.hourlyData?.[0].dischargeNo || '' 
-    });
+    
+    const siteName = result.hourlyData?.[0].siteName || '';
+    const detail = getSiteDetail(siteName);
+    let finalSiteInfo: SiteInfoDetail | null = null;
+
+    if (detail) {
+      finalSiteInfo = detail;
+    } else {
+      finalSiteInfo = { 
+        name: siteName, 
+        code: result.hourlyData?.[0].dischargeNo || '-',
+        address: '-',
+        lat: '-',
+        lng: '-'
+      };
+    }
+
+    setSiteInfo(finalSiteInfo);
+
+    const siteInfoToUse = finalSiteInfo;
+    if (siteInfoToUse && siteInfoToUse.lat !== '-' && siteInfoToUse.lng !== '-') {
+      const nearest = findNearestWeatherStation(parseFloat(siteInfoToUse.lat), parseFloat(siteInfoToUse.lng));
+      if (nearest) {
+        setNearestWeatherStation({
+          id: nearest.station.id,
+          name: nearest.station.name,
+          distance: nearest.distance
+        });
+
+        // Fetch Weather Data
+        if (result.hourlyData && result.hourlyData.length > 0) {
+          const sorted = [...result.hourlyData].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+          const start = sorted[0].timestamp;
+          const end = sorted[sorted.length - 1].timestamp;
+
+          const formatDateForKma = (date: Date) => {
+            const pad = (n: number) => n.toString().padStart(2, '0');
+            return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}00`;
+          };
+
+          const tm1 = formatDateForKma(start);
+          const tm2 = formatDateForKma(end);
+          const stn = nearest.station.id;
+
+          try {
+            const resp = await fetch(`/api/weather?tm1=${tm1}&tm2=${tm2}&stn=${stn}`);
+            const text = await resp.text();
+            const weatherData = parseWeatherResponse(text);
+            setWeatherChartData(weatherData);
+          } catch (err) {
+            console.error('Failed to fetch weather for chart:', err);
+          }
+        }
+      }
+    }
+    
     setIsProcessing(false);
 
     // Generate AI Report
@@ -87,6 +147,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           anomalies: foundAnomalies,
+          weatherData: weatherChartData,
           summary: {
             totalAnomalies: foundAnomalies.length,
             suddenChanges: foundAnomalies.filter(a => a.type === 'CASE2_SUDDEN').length,
@@ -202,6 +263,8 @@ export default function App() {
           anomalies={anomalies}
           totalRecords={totalRecords}
           siteInfo={siteInfo}
+          nearestWeatherStation={nearestWeatherStation}
+          weatherChartData={weatherChartData}
           onRedoAnalysis={handleRunAnalysis}
           aiReport={aiReport}
           isGeneratingReport={isGeneratingReport}

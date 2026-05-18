@@ -6,18 +6,36 @@ import {
   FileDown, 
   Search,
   ChevronDown,
-  Info
+  Info,
+  Database,
+  CloudRain,
+  Thermometer
 } from 'lucide-react';
+import { 
+  ComposedChart, 
+  Line, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  ResponsiveContainer 
+} from 'recharts';
 import { format } from 'date-fns';
 import { Card, CardContent } from './ui/Card';
 import { Button } from './ui/Button';
 import { Anomaly, AnomalyType, cn } from '../lib/utils';
+import { SiteInfoDetail } from '../lib/siteData';
+import { WeatherDataPoint } from '../lib/weatherParser';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface DashboardProps {
   anomalies: Anomaly[];
   totalRecords: number;
-  siteInfo: { name: string; id: string } | null;
+  siteInfo: SiteInfoDetail | null;
+  nearestWeatherStation: { id: string; name: string; distance: number } | null;
+  weatherChartData?: WeatherDataPoint[];
   onRedoAnalysis: () => void;
   aiReport: string | null;
   isGeneratingReport: boolean;
@@ -27,6 +45,8 @@ export function Dashboard({
   anomalies, 
   totalRecords, 
   siteInfo, 
+  nearestWeatherStation,
+  weatherChartData,
   onRedoAnalysis,
   aiReport,
   isGeneratingReport
@@ -107,7 +127,7 @@ export function Dashboard({
               </div>
               <div>
                 <h3 className="text-lg font-bold flex items-center gap-2">
-                  {siteInfo?.name || '사업장 정보 없음'} ({siteInfo?.id || '방류구 번호'})
+                   {siteInfo?.name || '사업장 정보 없음'} ({siteInfo?.code || '사업장 코드'})
                   <ChevronDown className="w-4 h-4 text-on-surface-variant" />
                 </h3>
                 <p className="text-xs text-on-surface-variant">측정 정합성 분석 및 이상 패턴 감지 결과</p>
@@ -208,12 +228,145 @@ export function Dashboard({
         </CardContent>
       </Card>
 
+      {/* Site Detail Information */}
+      {siteInfo && (
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="p-6">
+            <h4 className="font-bold mb-4 text-primary flex items-center gap-2">
+              <Database className="w-4 h-4" /> 사업장 등록 정보
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6">
+              <div className="space-y-1">
+                <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">사업장코드</p>
+                <p className="font-mono text-sm font-semibold">{siteInfo.code}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">사업장명</p>
+                <p className="font-bold text-sm">{siteInfo.name}</p>
+              </div>
+              <div className="space-y-1 lg:col-span-1 md:col-span-2">
+                <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">주소</p>
+                <p className="text-sm">{siteInfo.address}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">위도 (Latitude)</p>
+                <p className="font-mono text-sm">{siteInfo.lat}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">경도 (Longitude)</p>
+                <p className="font-mono text-sm">{siteInfo.lng}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] text-primary font-bold uppercase tracking-wider flex items-center gap-1">
+                  <Info className="w-3 h-3" /> 인근 기상관측소
+                </p>
+                <p className="text-sm font-bold">
+                  {nearestWeatherStation ? (
+                    <span className="flex items-center gap-1">
+                      {nearestWeatherStation.name} 
+                      <span className="text-xs font-normal text-on-surface-variant">
+                        ({nearestWeatherStation.distance.toFixed(2)}km)
+                      </span>
+                    </span>
+                  ) : '-'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Weather Chart Section */}
+      {weatherChartData && weatherChartData.length > 0 && (
+        <Card className="overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h4 className="font-bold flex items-center gap-2">
+                  <CloudRain className="w-4 h-4 text-primary" /> 인근 기상 실측 데이터
+                </h4>
+                <p className="text-xs text-on-surface-variant">가장 가까운 관측소({nearestWeatherStation?.name})의 측정값</p>
+              </div>
+              <div className="flex items-center gap-4 text-xs font-medium">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full bg-primary" />
+                  <span>기온 (℃)</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-secondary" />
+                  <span>강수량 (mm)</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="h-[250px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={weatherChartData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                  <XAxis 
+                    dataKey="time" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fontSize: 10, fill: '#64748B' }}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis 
+                    yAxisId="left"
+                    orientation="left"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 10, fill: '#3B82F6' }}
+                    label={{ value: '기온 (℃)', angle: -90, position: 'insideLeft', offset: 10, fontSize: 10, fill: '#3B82F6' }}
+                  />
+                  <YAxis 
+                    yAxisId="right"
+                    orientation="right"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 10, fill: '#94A3B8' }}
+                    label={{ value: '강수량 (mm)', angle: 90, position: 'insideRight', offset: 10, fontSize: 10, fill: '#94A3B8' }}
+                  />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                    itemStyle={{ fontSize: '12px' }}
+                    labelStyle={{ fontWeight: 'bold', marginBottom: '4px' }}
+                  />
+                  <Legend 
+                    verticalAlign="top" 
+                    height={36} 
+                    content={() => null} // We have a custom legend above
+                  />
+                  <Bar 
+                    yAxisId="right" 
+                    dataKey="precip" 
+                    name="강수량" 
+                    fill="#94A3B8" 
+                    radius={[2, 2, 0, 0]} 
+                    barSize={20}
+                  />
+                  <Line 
+                    yAxisId="left" 
+                    type="monotone" 
+                    dataKey="temp" 
+                    name="기온" 
+                    stroke="#3B82F6" 
+                    strokeWidth={3} 
+                    dot={{ r: 4, fill: '#3B82F6', strokeWidth: 0 }}
+                    activeDot={{ r: 6, strokeWidth: 0 }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Bottom Section: AI Insights */}
       <div className="w-full">
         <Card className="min-h-[300px] relative overflow-hidden bg-surface-container-low">
           <CardContent className="p-6">
             <h4 className="font-bold mb-2 flex items-center gap-2">
-               시설 건전성 종합 리포트 (Gemini AI)
+               수질 TMS 운영 평가 리포트 (Gemini AI)
             </h4>
             {isGeneratingReport ? (
               <div className="space-y-3 mt-4">
@@ -223,7 +376,7 @@ export function Dashboard({
                 <div className="h-4 bg-surface-container-highest animate-pulse rounded w-2/3" />
               </div>
             ) : aiReport ? (
-              <div className="text-xs leading-relaxed text-on-surface-variant h-[180px] overflow-auto whitespace-pre-wrap mt-2 pr-2">
+              <div className="text-2xl leading-relaxed text-on-surface-variant h-[220px] overflow-auto whitespace-pre-wrap mt-2 pr-2">
                 {aiReport}
               </div>
             ) : (
