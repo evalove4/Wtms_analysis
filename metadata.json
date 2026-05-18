@@ -1,0 +1,8 @@
+{
+  "name": "Precision Monitor - Water TMS Analysis",
+  "description": "Environmental monitoring dashboard for analyzing and validating water discharge data (TOC, SS, TN, TP) via hourly and 5-min tracking records.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
